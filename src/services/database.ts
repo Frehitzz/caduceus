@@ -3,6 +3,8 @@ import type { EventRecord, ExamRecord, InternshipLogRecord } from '../db/types.j
 import { DateTime } from 'luxon';
 import { config } from '../config/env.js';
 
+export type QueryFilterType = 'upcoming' | 'all' | 'this_week' | 'overdue';
+
 export async function saveEvent(
   userId: string,
   category: string,
@@ -157,4 +159,104 @@ export async function markReminderSent(examId: string): Promise<void> {
   if (error) {
     console.error(`Failed to mark reminder sent for exam ${examId}: ${error.message}`);
   }
+}
+
+export async function queryExams(options: {
+  userId?: string;
+  filter?: QueryFilterType;
+}): Promise<ExamRecord[]> {
+  const now = DateTime.now().setZone(config.TIMEZONE);
+  const startOfDay = now.startOf('day').toISO();
+  const endOfWeek = now.plus({ days: 7 }).endOf('day').toISO();
+  const filter = options.filter ?? 'upcoming';
+
+  let query = supabase.from('exams').select('*');
+
+  if (options.userId) {
+    query = query.eq('user_id', options.userId);
+  }
+
+  if (filter === 'upcoming') {
+    query = query.gte('exam_date', startOfDay).order('exam_date', { ascending: true });
+  } else if (filter === 'this_week') {
+    query = query
+      .gte('exam_date', startOfDay)
+      .lte('exam_date', endOfWeek)
+      .order('exam_date', { ascending: true });
+  } else if (filter === 'overdue') {
+    query = query.lt('exam_date', startOfDay).order('exam_date', { ascending: false });
+  } else {
+    query = query.order('exam_date', { ascending: true });
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(`Failed to query exams: ${error.message}`);
+  }
+  return (data as ExamRecord[]) ?? [];
+}
+
+export async function queryEvents(options: {
+  userId?: string;
+  filter?: QueryFilterType;
+}): Promise<EventRecord[]> {
+  const now = DateTime.now().setZone(config.TIMEZONE);
+  const startOfDay = now.startOf('day').toISO();
+  const endOfWeek = now.plus({ days: 7 }).endOf('day').toISO();
+  const filter = options.filter ?? 'upcoming';
+
+  let query = supabase.from('events').select('*');
+
+  if (options.userId) {
+    query = query.eq('user_id', options.userId);
+  }
+
+  if (filter === 'upcoming') {
+    query = query.gte('event_date', startOfDay).order('event_date', { ascending: true });
+  } else if (filter === 'this_week') {
+    query = query
+      .gte('event_date', startOfDay)
+      .lte('event_date', endOfWeek)
+      .order('event_date', { ascending: true });
+  } else if (filter === 'overdue') {
+    query = query.lt('event_date', startOfDay).order('event_date', { ascending: false });
+  } else {
+    query = query.order('event_date', { ascending: true });
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(`Failed to query events: ${error.message}`);
+  }
+  return (data as EventRecord[]) ?? [];
+}
+
+export async function queryInternshipLogs(options: {
+  userId?: string;
+  filter?: QueryFilterType;
+}): Promise<InternshipLogRecord[]> {
+  const now = DateTime.now().setZone(config.TIMEZONE);
+  const startOfDay = now.startOf('day').toISO();
+  const startOf7DaysAgo = now.minus({ days: 7 }).startOf('day').toISO();
+  const filter = options.filter ?? 'upcoming';
+
+  let query = supabase.from('internship_logs').select('*');
+
+  if (options.userId) {
+    query = query.eq('user_id', options.userId);
+  }
+
+  if (filter === 'this_week' || filter === 'upcoming') {
+    query = query.gte('logged_at', startOf7DaysAgo).order('logged_at', { ascending: false });
+  } else if (filter === 'overdue') {
+    query = query.lt('logged_at', startOfDay).order('logged_at', { ascending: false });
+  } else {
+    query = query.order('logged_at', { ascending: false });
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(`Failed to query internship logs: ${error.message}`);
+  }
+  return (data as InternshipLogRecord[]) ?? [];
 }

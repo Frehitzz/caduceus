@@ -3,6 +3,7 @@ import { config } from '../../config/env.js';
 import { classifyMessage } from '../../services/classifier.js';
 import { saveEvent, saveExam, saveInternshipLog } from '../../services/database.js';
 import { generateDigestEmbed } from '../../services/digest.js';
+import { handleQueryIntent } from '../../services/queryHandler.js';
 
 export async function handleMessage(message: Message, client: Client): Promise<void> {
   // Ignore bot messages
@@ -41,6 +42,31 @@ export async function handleMessage(message: Message, client: Client): Promise<v
     }
 
     const userId = message.author.id;
+
+    // Handle READ / Query Intent
+    if (classification.category === 'query') {
+      const queryResult = await handleQueryIntent(
+        userId,
+        classification.query_scope,
+        classification.query_filter,
+        message.author.username
+      );
+
+      await message.reactions.cache.get('🔍')?.users.remove(client.user?.id).catch(() => null);
+
+      if (queryResult.empty) {
+        await message.react('✨').catch(() => null);
+        await message.reply(queryResult.message ?? "Nothing upcoming — you're all caught up!");
+      } else if (queryResult.embed) {
+        await message.react('📋').catch(() => null);
+        await message.reply({ embeds: [queryResult.embed] });
+      }
+
+      console.log(`✅ [QUERY] Handled query (scope: ${classification.query_scope}, filter: ${classification.query_filter})`);
+      return;
+    }
+
+    // Handle WRITE Operations (plan, exam, internship_log)
     let targetChannelId: string | undefined;
     let categoryTitle = '';
     let categoryColor = 0x5865f2;

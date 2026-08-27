@@ -4,14 +4,51 @@ import { DateTime } from 'luxon';
 import { z } from 'zod';
 import { config } from '../config/env.js';
 
+const QueryScopeEnum = z.enum(['all', 'plans', 'exams', 'internship_log']);
+const QueryFilterEnum = z.enum(['upcoming', 'all', 'this_week', 'overdue']);
+
 export const ClassifierResultSchema = z.object({
-  category: z.enum(['plan', 'exam', 'internship_log', 'other']),
-  isActionable: z.boolean(),
-  subject: z.string().default(''),
-  date: z.string().nullable().default(null),
-  notes: z.string().nullable().default(null),
-  cleanedText: z.string(),
-  confirmationSummary: z.string(),
+  category: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase().trim();
+      if (['plan', 'exam', 'internship_log', 'query', 'other'].includes(lower)) {
+        return lower;
+      }
+    }
+    return 'other';
+  }, z.enum(['plan', 'exam', 'internship_log', 'query', 'other'])),
+
+  isActionable: z.preprocess((val) => {
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'string') return val.toLowerCase() === 'true';
+    return true;
+  }, z.boolean()),
+
+  subject: z.preprocess((val) => (val == null ? '' : String(val)), z.string()),
+  date: z.preprocess((val) => (val == null || val === '' ? null : String(val)), z.string().nullable()),
+  notes: z.preprocess((val) => (val == null || val === '' ? null : String(val)), z.string().nullable()),
+  cleanedText: z.preprocess((val) => (val == null ? '' : String(val)), z.string()),
+  confirmationSummary: z.preprocess((val) => (val == null ? '' : String(val)), z.string()),
+
+  query_scope: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase().trim();
+      if (['all', 'plans', 'exams', 'internship_log'].includes(lower)) {
+        return lower;
+      }
+    }
+    return 'all';
+  }, QueryScopeEnum).default('all'),
+
+  query_filter: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase().trim();
+      if (['upcoming', 'all', 'this_week', 'overdue'].includes(lower)) {
+        return lower;
+      }
+    }
+    return 'upcoming';
+  }, QueryFilterEnum).default('upcoming'),
 });
 
 export type ClassifierResult = z.infer<typeof ClassifierResultSchema>;
@@ -25,32 +62,49 @@ function buildPrompt(rawMessage: string, now: DateTime): string {
   const timezone = config.TIMEZONE;
 
   return `You are Caduceus, a smart personal assistant bot for Fritz.
-Your job is to classify unstructured text messages into one of three categories:
-1. "plan": Any event, plan, reminder, social plan, date, personal errand, or meeting with a target date or timeframe (excluding academic exams or internship logs).
-2. "exam": Academic tests, exams, quizzes, midterm/final exams, or certifications.
-3. "internship_log": Day-to-day work notes, bug fixes, features built, tasks completed, or development updates (Fritz works at Banh Mi Kitchen Services Inc., building an LMS with quiz gating).
-4. "other": Chit-chat, queries, questions, or random text that does not represent a plan, exam, or work log entry.
+Your job is to classify unstructured text messages into one of four categories:
+1. "plan": WRITE operation for a new event, plan, reminder, social plan, date, personal errand, or meeting with a target date or timeframe (excluding academic exams or internship logs).
+2. "exam": WRITE operation for a new academic test, exam, quiz, midterm/final exam, or certification.
+3. "internship_log": WRITE operation for day-to-day work notes, bug fixes, features built, tasks completed, or development updates (Fritz works at Banh Mi Kitchen Services Inc., building an LMS with quiz gating).
+4. "query": READ operation asking to view, list, check, or retrieve stored items (e.g. "give me all the list of my todo", "what exams do I have", "what's on my plate this week", "show me what I logged for internship this week", "show all plans", "list my exams", "what do I need to do", etc.).
+5. "other": Chit-chat, greetings, random noise, or unsupported conversational queries.
 
 Current reference time: ${currentFormatted} (${timezone}) [ISO: ${currentIso}].
 
-Rules:
+Rules for "query":
+- Trigger "query" whenever the message is asking about existing data rather than describing new data to record.
+- "query_scope":
+  - "all": Generic questions about todos, tasks, agendas, upcoming items (e.g. "give me all the list of my todo", "what's on my plate", "show my tasks").
+  - "plans": Specifically asking for plans or events (e.g. "list my plans", "what events do I have").
+  - "exams": Specifically asking for exams or quizzes (e.g. "what exams do I have", "list upcoming exams").
+  - "internship_log": Specifically asking for internship or work logs (e.g. "what did I log for internship", "show my work notes").
+- "query_filter":
+  - "upcoming": Default for general queries or future items.
+  - "this_week": When asking about "this week", "next 7 days", or "coming days".
+  - "overdue": When asking about overdue, missed, or past items.
+  - "all": When explicitly asking for all items without time filters (e.g. "show all exams ever", "all logs").
+- For "query", set isActionable to true, subject to query topic, and confirmationSummary to a concise summary.
+
+Rules for "plan", "exam", "internship_log":
 - If a relative date is mentioned ("tomorrow", "next Friday", "in 3 days", "Sept 5"), resolve it to an absolute ISO-8601 date string relative to the current reference time in timezone ${timezone}.
 - For exams, extract the subject name into "subject" (e.g. "Networks", "Database Systems").
 - For plans, set "subject" to the event title.
 - For internship logs, set "date" to the reference date if no specific past date is mentioned.
-- Set "isActionable" to true for plans, exams, and internship logs. If the message is meaningless spam, greeting, or unsupported query, set "isActionable" to false and category to "other".
+- Set "isActionable" to true.
 - Set "cleanedText" to a concise, clean formulation of the entry.
 - Set "confirmationSummary" to a short 1-line human readable summary describing what was recorded.
 
 Respond with ONLY a valid JSON object matching this schema:
 {
-  "category": "plan" | "exam" | "internship_log" | "other",
+  "category": "plan" | "exam" | "internship_log" | "query" | "other",
   "isActionable": boolean,
   "subject": string,
   "date": "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm:ssZZ" or null,
   "notes": string or null,
   "cleanedText": string,
-  "confirmationSummary": string
+  "confirmationSummary": string,
+  "query_scope": "all" | "plans" | "exams" | "internship_log",
+  "query_filter": "upcoming" | "all" | "this_week" | "overdue"
 }
 
 Message to classify:
