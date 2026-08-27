@@ -1,0 +1,39 @@
+{
+  "name": "caduceus",
+  "version": "1.0.0",
+  "description": "Caduceus — Discord Personal Assistant Bot (Capture -> Organize -> Daily Digest)",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "discord-bot",
+    "assistant",
+    "supabase",
+    "groq",
+    "gemini"
+  ],
+  "author": "Fritz",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^2.19.0",
+    "@supabase/supabase-js": "^2.112.4",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "groq-sdk": "^1.6.0",
+    "luxon": "^3.7.2",
+    "node-cron": "^4.6.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.5",
+    "@types/node": "^26.4.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.23.12",
+    "typescript": "^5.8.2"
+  }
+}
