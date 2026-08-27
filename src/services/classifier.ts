@@ -11,12 +11,12 @@ export const ClassifierResultSchema = z.object({
   category: z.preprocess((val) => {
     if (typeof val === 'string') {
       const lower = val.toLowerCase().trim();
-      if (['plan', 'exam', 'internship_log', 'query', 'other'].includes(lower)) {
+      if (['plan', 'exam', 'internship_log', 'query', 'complete', 'delete', 'other'].includes(lower)) {
         return lower;
       }
     }
     return 'other';
-  }, z.enum(['plan', 'exam', 'internship_log', 'query', 'other'])),
+  }, z.enum(['plan', 'exam', 'internship_log', 'query', 'complete', 'delete', 'other'])),
 
   isActionable: z.preprocess((val) => {
     if (typeof val === 'boolean') return val;
@@ -25,6 +25,7 @@ export const ClassifierResultSchema = z.object({
   }, z.boolean()),
 
   subject: z.preprocess((val) => (val == null ? '' : String(val)), z.string()),
+  target_description: z.preprocess((val) => (val == null ? '' : String(val)), z.string()).default(''),
   date: z.preprocess((val) => (val == null || val === '' ? null : String(val)), z.string().nullable()),
   notes: z.preprocess((val) => (val == null || val === '' ? null : String(val)), z.string().nullable()),
   cleanedText: z.preprocess((val) => (val == null ? '' : String(val)), z.string()),
@@ -62,17 +63,19 @@ function buildPrompt(rawMessage: string, now: DateTime): string {
   const timezone = config.TIMEZONE;
 
   return `You are Caduceus, a smart personal assistant bot for Fritz.
-Your job is to classify unstructured text messages into one of four categories:
+Your job is to classify unstructured text messages into one of the following categories:
 1. "plan": WRITE operation for a new event, plan, reminder, social plan, date, personal errand, or meeting with a target date or timeframe (excluding academic exams or internship logs).
 2. "exam": WRITE operation for a new academic test, exam, quiz, midterm/final exam, or certification.
 3. "internship_log": WRITE operation for day-to-day work notes, bug fixes, features built, tasks completed, or development updates (Fritz works at Banh Mi Kitchen Services Inc., building an LMS with quiz gating).
 4. "query": READ operation asking to view, list, check, or retrieve stored items (e.g. "give me all the list of my todo", "what exams do I have", "what's on my plate this week", "show me what I logged for internship this week", "show all plans", "list my exams", "what do I need to do", etc.).
-5. "other": Chit-chat, greetings, random noise, or unsupported conversational queries.
+5. "complete": When the user says they have finished, completed, or are done with a previously recorded task, exam, or plan. Examples: "done with networks exam", "completed buying flowers", "finished the Rizal reflection", "marked networks exam as done".
+6. "delete": When the user wants to cancel, remove, or delete a previously recorded task, exam, or plan. Examples: "cancel the 2x2 picture plan", "remove networks exam", "delete buying flowers", "cancel Rizal reflection".
+7. "other": Chit-chat, greetings, random noise, or unsupported conversational queries.
 
 Current reference time: ${currentFormatted} (${timezone}) [ISO: ${currentIso}].
 
 Rules for "query":
-- Trigger "query" whenever the message is asking about existing data rather than describing new data to record.
+- Trigger "query" whenever the message is asking about existing data rather than describing new data to record or modifying data.
 - "query_scope":
   - "all": Generic questions about todos, tasks, agendas, upcoming items (e.g. "give me all the list of my todo", "what's on my plate", "show my tasks").
   - "plans": Specifically asking for plans or events (e.g. "list my plans", "what events do I have").
@@ -85,6 +88,13 @@ Rules for "query":
   - "all": When explicitly asking for all items without time filters (e.g. "show all exams ever", "all logs").
 - For "query", set isActionable to true, subject to query topic, and confirmationSummary to a concise summary.
 
+Rules for "complete" and "delete":
+- For "complete" and "delete", set "target_description" to a short identifying phrase of the item being completed or deleted (e.g., "networks exam", "buying flowers", "2x2 picture plan", "Rizal reflection").
+- Set "isActionable" to true.
+- Set "subject" to the item being referenced.
+- Set "cleanedText" to a concise formulation of the action.
+- Set "confirmationSummary" to a short 1-line human readable summary (e.g. "Marked Networks exam as complete", "Cancelled 2x2 picture plan").
+
 Rules for "plan", "exam", "internship_log":
 - If a relative date is mentioned ("tomorrow", "next Friday", "in 3 days", "Sept 5"), resolve it to an absolute ISO-8601 date string relative to the current reference time in timezone ${timezone}.
 - For exams, extract the subject name into "subject" (e.g. "Networks", "Database Systems").
@@ -96,9 +106,10 @@ Rules for "plan", "exam", "internship_log":
 
 Respond with ONLY a valid JSON object matching this schema:
 {
-  "category": "plan" | "exam" | "internship_log" | "query" | "other",
+  "category": "plan" | "exam" | "internship_log" | "query" | "complete" | "delete" | "other",
   "isActionable": boolean,
   "subject": string,
+  "target_description": string,
   "date": "YYYY-MM-DD" or "YYYY-MM-DDTHH:mm:ssZZ" or null,
   "notes": string or null,
   "cleanedText": string,
