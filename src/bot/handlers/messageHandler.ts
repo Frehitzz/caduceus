@@ -1,7 +1,15 @@
 import { Message, EmbedBuilder, TextChannel, Client } from 'discord.js';
 import { config } from '../../config/env.js';
 import { classifyMessage } from '../../services/classifier.js';
-import { saveEvent, saveExam, saveInternshipLog } from '../../services/database.js';
+import {
+  saveEvent,
+  saveExam,
+  saveInternshipLog,
+  completeExam,
+  completeEvent,
+  deleteExam,
+  deleteEvent,
+} from '../../services/database.js';
 import { generateDigestEmbed } from '../../services/digest.js';
 import { handleQueryIntent } from '../../services/queryHandler.js';
 
@@ -63,6 +71,104 @@ export async function handleMessage(message: Message, client: Client): Promise<v
       }
 
       console.log(`✅ [QUERY] Handled query (scope: ${classification.query_scope}, filter: ${classification.query_filter})`);
+      return;
+    }
+
+    // Handle COMPLETE Intent
+    if (classification.category === 'complete') {
+      const target =
+        classification.target_description ||
+        classification.subject ||
+        classification.cleanedText ||
+        trimmedContent;
+
+      await message.reactions.cache.get('🔍')?.users.remove(client.user?.id).catch(() => null);
+
+      const completedExam = await completeExam(userId, target);
+      if (completedExam) {
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Exam Completed')
+          .setColor(0x57f287)
+          .setDescription(`Marked as completed: **${completedExam.subject}**`)
+          .setFooter({ text: `Completed by ${message.author.username}` })
+          .setTimestamp(new Date());
+
+        if (completedExam.exam_date) {
+          embed.addFields({ name: 'Scheduled Date', value: completedExam.exam_date, inline: true });
+        }
+
+        await message.react('✅').catch(() => null);
+        await message.reply({ embeds: [embed] });
+        console.log(`✅ [COMPLETE] Completed exam: "${completedExam.subject}"`);
+        return;
+      }
+
+      const completedEvent = await completeEvent(userId, target);
+      if (completedEvent) {
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Task / Plan Completed')
+          .setColor(0x57f287)
+          .setDescription(`Marked as completed: **${completedEvent.raw_text}**`)
+          .setFooter({ text: `Completed by ${message.author.username}` })
+          .setTimestamp(new Date());
+
+        if (completedEvent.event_date) {
+          embed.addFields({ name: 'Scheduled Date', value: completedEvent.event_date, inline: true });
+        }
+
+        await message.react('✅').catch(() => null);
+        await message.reply({ embeds: [embed] });
+        console.log(`✅ [COMPLETE] Completed event: "${completedEvent.raw_text}"`);
+        return;
+      }
+
+      await message.react('❓').catch(() => null);
+      await message.reply(`Couldn't find an active task or exam matching "${target}" to complete.`);
+      return;
+    }
+
+    // Handle DELETE / CANCEL Intent
+    if (classification.category === 'delete') {
+      const target =
+        classification.target_description ||
+        classification.subject ||
+        classification.cleanedText ||
+        trimmedContent;
+
+      await message.reactions.cache.get('🔍')?.users.remove(client.user?.id).catch(() => null);
+
+      const deletedExam = await deleteExam(userId, target);
+      if (deletedExam) {
+        const embed = new EmbedBuilder()
+          .setTitle('🗑️ Exam Removed')
+          .setColor(0xed4245)
+          .setDescription(`Deleted exam: **${deletedExam.subject}**`)
+          .setFooter({ text: `Removed by ${message.author.username}` })
+          .setTimestamp(new Date());
+
+        await message.react('🗑️').catch(() => null);
+        await message.reply({ embeds: [embed] });
+        console.log(`🗑️ [DELETE] Deleted exam: "${deletedExam.subject}"`);
+        return;
+      }
+
+      const deletedEvent = await deleteEvent(userId, target);
+      if (deletedEvent) {
+        const embed = new EmbedBuilder()
+          .setTitle('🗑️ Plan / Event Cancelled')
+          .setColor(0xed4245)
+          .setDescription(`Cancelled and removed: **${deletedEvent.raw_text}**`)
+          .setFooter({ text: `Removed by ${message.author.username}` })
+          .setTimestamp(new Date());
+
+        await message.react('🗑️').catch(() => null);
+        await message.reply({ embeds: [embed] });
+        console.log(`🗑️ [DELETE] Deleted event: "${deletedEvent.raw_text}"`);
+        return;
+      }
+
+      await message.react('❓').catch(() => null);
+      await message.reply(`Couldn't find an active task or exam matching "${target}" to delete.`);
       return;
     }
 

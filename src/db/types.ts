@@ -1,4 +1,4 @@
-export type CategoryType = 'plan' | 'exam' | 'internship_log' | 'other';
+export type CategoryType = 'plan' | 'exam' | 'internship_log' | 'query' | 'complete' | 'delete' | 'other';
 
 export interface EventRecord {
   id?: string;
@@ -7,6 +7,8 @@ export interface EventRecord {
   raw_text: string;
   event_date: string | null;
   channel_posted?: string | null;
+  is_completed?: boolean;
+  completed_at?: string | null;
   created_at?: string;
 }
 
@@ -16,6 +18,8 @@ export interface ExamRecord {
   subject: string;
   exam_date: string;
   notes?: string | null;
+  is_completed?: boolean;
+  completed_at?: string | null;
   created_at?: string;
 }
 

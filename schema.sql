@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS events (
     raw_text TEXT NOT NULL,
     event_date TIMESTAMPTZ,
     channel_posted TEXT,
+    is_completed BOOLEAN NOT NULL DEFAULT false,
+    completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -19,6 +21,8 @@ CREATE TABLE IF NOT EXISTS exams (
     subject TEXT NOT NULL,
     exam_date TIMESTAMPTZ NOT NULL,
     notes TEXT,
+    is_completed BOOLEAN NOT NULL DEFAULT false,
+    completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -40,6 +44,8 @@ CREATE TABLE IF NOT EXISTS reminders_sent (
 -- Indexes for efficient querying by user and dates
 CREATE INDEX IF NOT EXISTS idx_events_user_date ON events(user_id, event_date);
 CREATE INDEX IF NOT EXISTS idx_exams_user_date ON exams(user_id, exam_date);
+CREATE INDEX IF NOT EXISTS idx_events_active ON events(user_id, is_completed, event_date);
+CREATE INDEX IF NOT EXISTS idx_exams_active ON exams(user_id, is_completed, exam_date);
 CREATE INDEX IF NOT EXISTS idx_internship_logs_user_logged ON internship_logs(user_id, logged_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reminders_exam_sent ON reminders_sent(exam_id, sent_at);
 
